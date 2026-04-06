@@ -6,23 +6,35 @@ from typing import Optional
 import numpy as np
 import torch
 
+
 from demo.demo_config import HTML_DIR, PLOT_DIR, SAMPLE_RATE, ensure_demo_dirs
 
 
-def synthesize_pretty_midi(pm, sr: int = SAMPLE_RATE) -> np.ndarray:
-    """Render PrettyMIDI to audio using fluidsynth when available, else fallback."""
+
+def synthesize_pretty_midi(pm, sr: int = SAMPLE_RATE, sf2_path: str | None = None) -> np.ndarray:
+    """ FluidSynth + optional piano soundfont."""
+
+    # force piano instrument for demo playback
+    for inst in pm.instruments:
+        inst.program = 0
+        inst.is_drum = False
+
     try:
-        y = pm.fluidsynth(fs=sr)
+        if sf2_path:
+            y = pm.fluidsynth(fs=sr, sf2_path=sf2_path)
+        else:
+            y = pm.fluidsynth(fs=sr)
     except Exception:
         y = pm.synthesize(fs=sr)
+
     y = np.asarray(y, dtype=np.float32)
     if y.size == 0:
         y = np.zeros(sr, dtype=np.float32)
+
     max_abs = np.max(np.abs(y)) if y.size else 0.0
     if max_abs > 0:
         y = y / max_abs
     return y
-
 
 def _to_numpy(x):
     if x is None:
@@ -110,27 +122,33 @@ def plot_roll_diff(
     return fig
 
 
-def render_bokeh_midi(pm, html_path: str | Path | None = None, show_inline: bool = False):
-    """Create a Bokeh MIDI plot when visual_midi is installed.
-
-    Returns the Bokeh object when successful; otherwise returns ``None``.
-    """
+def render_bokeh_midi(pm, show_inline: bool = False):
+    """Inline-only Bokeh MIDI plot for Colab. No file saving."""
     try:
-        from bokeh.io import output_file, output_notebook, save, show
-        from visual_midi import Preset, Plotter
+        from bokeh.io import output_notebook, show
+        from visual_midi import Plotter
     except Exception:
         return None
 
     plotter = Plotter()
-    plot = plotter.show(pm, preset=Preset(plot_width=1000, plot_height=320), show=False)
 
-    if html_path is not None:
-        html_path = Path(html_path)
-        html_path.parent.mkdir(parents=True, exist_ok=True)
-        output_file(str(html_path))
-        save(plot)
+    try:
+        plot = plotter.show(pm, show=False)
+    except TypeError:
+        try:
+            plot = plotter.show(pm)
+        except Exception:
+            return None
+    except Exception:
+        return None
 
-    if show_inline:
+    if plot is not None:
+        if hasattr(plot, "width"):
+            plot.width = 1000
+        if hasattr(plot, "height"):
+            plot.height = 320
+
+    if show_inline and plot is not None:
         output_notebook()
         show(plot)
 
