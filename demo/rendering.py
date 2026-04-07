@@ -5,6 +5,8 @@ from typing import Optional
 
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+
 
 
 from demo.demo_config import HTML_DIR, PLOT_DIR, SAMPLE_RATE, ensure_demo_dirs
@@ -53,36 +55,83 @@ def plot_piano_roll_side_by_side(
     gt_onset=None,
     n_frames: int = 800,
     title: str = "Piano roll comparison",
-    save_path: str | Path | None = None,
+    save_path=None,
+    frame_threshold: float = 0.5,
 ):
-    import matplotlib.pyplot as plt
 
-    pred_frame = _to_numpy(pred_frame)[:n_frames].T
-    gt_frame_np = _to_numpy(gt_frame)
-    if gt_frame_np is not None:
-        gt_frame_np = gt_frame_np[:n_frames].T
 
-    if gt_frame_np is None:
+    def _prep(x, threshold=None):
+        if x is None:
+            return None
+        if hasattr(x, "detach"):
+            x = x.detach().cpu().numpy()
+        else:
+            x = np.asarray(x)
+
+        x = x[:n_frames].T
+
+        # binarise so prediction and GT are visually comparable
+        if threshold is not None:
+            x = (x > threshold).astype(np.float32)
+
+        return x
+
+    pred_img = _prep(pred_frame, threshold=frame_threshold)
+    gt_img = _prep(gt_frame, threshold=0.5)
+
+    if gt_img is None:
         fig, ax = plt.subplots(1, 1, figsize=(14, 4))
-        ax.imshow(pred_frame, aspect="auto", origin="lower", cmap="magma", vmin=0, vmax=1)
+        ax.imshow(
+            pred_img,
+            aspect="auto",
+            origin="lower",
+            cmap="gray_r",   # white bg, black notes
+            vmin=0,
+            vmax=1,
+            interpolation="nearest",
+        )
         ax.set_title(title)
         ax.set_xlabel("Frame")
         ax.set_ylabel("Piano key")
+        ax.set_facecolor("white")
     else:
         fig, axes = plt.subplots(1, 2, figsize=(16, 4), sharey=True)
-        axes[0].imshow(gt_frame_np, aspect="auto", origin="lower", cmap="Greens", vmin=0, vmax=1)
+
+        axes[0].imshow(
+            gt_img,
+            aspect="auto",
+            origin="lower",
+            cmap="gray_r",
+            vmin=0,
+            vmax=1,
+            interpolation="nearest",
+        )
         axes[0].set_title("Ground truth")
-        axes[1].imshow(pred_frame, aspect="auto", origin="lower", cmap="magma", vmin=0, vmax=1)
+
+        axes[1].imshow(
+            pred_img,
+            aspect="auto",
+            origin="lower",
+            cmap="gray_r",
+            vmin=0,
+            vmax=1,
+            interpolation="nearest",
+        )
         axes[1].set_title("Prediction")
+
         for ax in axes:
             ax.set_xlabel("Frame")
+            ax.set_facecolor("white")
+
         axes[0].set_ylabel("Piano key")
         fig.suptitle(title)
 
     fig.tight_layout()
+
     if save_path is not None:
         Path(save_path).parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(str(save_path), dpi=160, bbox_inches="tight")
+        fig.savefig(str(save_path), dpi=160, bbox_inches="tight", facecolor="white")
+
     return fig
 
 
